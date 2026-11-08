@@ -51,7 +51,15 @@ seo-brief build -k "email marketing" --offline examples/offline-pages -f md,html
 
 # Quick comparison table (or --json) without writing a brief
 seo-brief analyze -k "email marketing" --offline examples/offline-pages
+
+# Head-to-head: your page vs one competitor (URLs or saved .html files)
+seo-brief compare my-draft.html https://example.com/guide --top 20
 ```
+
+`compare` matches the H2/H3 outlines of the two pages (question headings are left to the FAQ section)
+and reports shared headings, headings only on one page, and the 1-3 word terms (used at least twice)
+that both pages share or only one uses, plus a word/heading/link/image comparison. Add `--json` for
+machine-readable output.
 
 Options worth knowing:
 
