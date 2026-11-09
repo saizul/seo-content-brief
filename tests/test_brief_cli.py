@@ -7,6 +7,7 @@ from seo_brief.brief import (
     build_brief,
     detect_language,
     eeat_checklist,
+    render_front_matter,
     render_html,
     render_markdown,
     suggest_schema,
@@ -106,6 +107,36 @@ def test_html_bangla_lang(page_bn):
     assert '<html lang="bn">' in render_html(b)
 
 
+def test_front_matter_block(brief):
+    fm = render_front_matter(brief)
+    lines = fm.splitlines()
+    assert lines[0] == "---" and lines[-1] == "---" and fm.endswith("---\n")
+    fields = dict(line.split(": ", 1) for line in lines[1:-1] if ": " in line and line[0] != " ")
+    assert json.loads(fields["title"]) == "Content brief: email marketing for small business"
+    assert json.loads(fields["keyword"]) == "email marketing for small business"
+    assert fields["date"] == "2026-03-01"
+    assert fields["draft"] == "true"
+    assert fields["competitors"] == "3"
+    wc = brief.analysis["word_count"]
+    assert fields["word_count_target"] == str(wc.target)
+    assert "schema:" in lines and any(x.startswith('  - "Article') for x in lines)
+
+
+def test_front_matter_quotes_special_characters(english_pages):
+    b = build_brief('Best "SEO": tips\n# not a heading', english_pages, today=TODAY)
+    fm = render_front_matter(b)
+    title_line = next(x for x in fm.splitlines() if x.startswith("title: "))
+    expected = 'Content brief: Best "SEO": tips\n# not a heading'
+    assert json.loads(title_line[len("title: ") :]) == expected
+    assert not any(x.startswith("# ") for x in fm.splitlines())  # newline stayed escaped
+
+
+def test_front_matter_keeps_bangla_readable(page_bn):
+    b = build_brief("ইমেইল মার্কেটিং", [page_bn], today=TODAY)
+    fm = render_front_matter(b)
+    assert "ইমেইল মার্কেটিং" in fm and 'lang: "bn"' in fm
+
+
 # -- cli -----------------------------------------------------------------
 
 
@@ -172,3 +203,15 @@ def test_cli_analyze_json(fixtures_dir, capsys):
 def test_cli_analyze_table(fixtures_dir, capsys):
     assert main(["analyze", "-k", "x", "--offline", str(fixtures_dir)]) == 0
     assert "Competitors for" in capsys.readouterr().out
+
+
+def test_cli_front_matter_flag(fixtures_dir, tmp_path):
+    out = tmp_path / "fm"
+    args = ["build", "-k", "email marketing", "--offline", str(fixtures_dir), "-o", str(out)]
+    assert main([*args, "-f", "md", "--front-matter"]) == 0
+    md = (out / "email-marketing.md").read_text(encoding="utf-8")
+    assert md.startswith("---\ntitle: ")
+    assert "\n---\n# Content brief: email marketing" in md
+    plain = tmp_path / "plain"
+    assert main([*args[:-1], str(plain), "-f", "md"]) == 0
+    assert (plain / "email-marketing.md").read_text(encoding="utf-8").startswith("# Content brief")

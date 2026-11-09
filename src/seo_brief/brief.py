@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import json
 from dataclasses import dataclass, field
 
 from jinja2 import Environment
@@ -119,6 +120,35 @@ def build_brief(keyword: str, pages: list, skipped: list | None = None, today=No
 
 def _md_escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+def render_front_matter(brief: Brief) -> str:
+    """YAML front matter block for static-site generators and CMS Markdown importers.
+
+    Strings are emitted as JSON strings, which are valid (always quoted) YAML scalars.
+    """
+    q = json.dumps
+    wc = brief.analysis.get("word_count")
+    lines = [
+        "---",
+        f"title: {q('Content brief: ' + brief.keyword, ensure_ascii=False)}",
+        f"keyword: {q(brief.keyword, ensure_ascii=False)}",
+        f"date: {brief.generated}",
+        f"lang: {q(brief.language)}",
+        "draft: true",
+        f"competitors: {len(brief.pages)}",
+    ]
+    if wc:
+        lines += [
+            f"word_count_low: {wc.low}",
+            f"word_count_high: {wc.high}",
+            f"word_count_target: {wc.target}",
+        ]
+    if brief.schema_suggestions:
+        lines.append("schema:")
+        lines += [f"  - {q(item, ensure_ascii=False)}" for item in brief.schema_suggestions]
+    lines += ["---", ""]
+    return "\n".join(lines)
 
 
 def render_markdown(brief: Brief) -> str:

@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `seo-brief build --front-matter`: prepend a YAML front matter block to the Markdown brief so it can be imported into static site generators and CMSs.
 - `seo-brief compare PAGE_A PAGE_B`: shared and unique headings and terms between two pages (URL or local HTML file), with `--json` output.
 
 ## [0.1.0] - 2026-11-08
