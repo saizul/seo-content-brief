@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .brief import build_brief, render_html, render_markdown
+from .brief import build_brief, render_front_matter, render_html, render_markdown
 from .compare import compare_pages
 from .extract import parse_html
 from .fetch import DEFAULT_UA, Fetcher, load_offline
@@ -59,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     common(b)
     b.add_argument("-o", "--out", default="brief-output", help="output directory")
     b.add_argument("-f", "--format", default="md,html", help="comma list of: md, html, json")
+    b.add_argument(
+        "--front-matter",
+        action="store_true",
+        help="start the Markdown file with a YAML front matter block (for CMS/SSG import)",
+    )
 
     a = sub.add_parser("analyze", help="print a per-page comparison table")
     common(a)
@@ -126,7 +131,10 @@ def cmd_build(args, console: Console) -> int:
     written = []
     if "md" in formats:
         path = out / f"{stem}.md"
-        path.write_text(render_markdown(brief), encoding="utf-8")
+        body = render_markdown(brief)
+        if args.front_matter:
+            body = render_front_matter(brief) + body
+        path.write_text(body, encoding="utf-8")
         written.append(path)
     if "html" in formats:
         path = out / f"{stem}.html"

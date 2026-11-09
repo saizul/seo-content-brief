@@ -71,6 +71,7 @@ Options worth knowing:
 | `--cache-dir`, `--no-cache` | Disk cache (default `.seo-brief-cache`, 7 day TTL) |
 | `--user-agent` | Override the default `seo-brief/x.y (+https://saizul.com ...)` UA |
 | `-f/--format` | Any of `md`, `html`, `json` |
+| `--front-matter` | Start the Markdown file with a YAML front matter block (title, keyword, date, lang, `draft: true`, word count range, schema suggestions) for Hugo, Jekyll, Astro or CMS importers |
 | `-o/--out` | Output directory (default `brief-output`) |
 
 URLs blocked by `robots.txt`, non-HTML responses, errors and oversized pages are skipped and listed
