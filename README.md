@@ -54,12 +54,31 @@ seo-brief analyze -k "email marketing" --offline examples/offline-pages
 
 # Head-to-head: your page vs one competitor (URLs or saved .html files)
 seo-brief compare my-draft.html https://example.com/guide --top 20
+
+# Score your draft (Markdown, text or HTML) against the brief for the same competitors
+seo-brief check my-draft.md -k "email marketing" --offline examples/offline-pages --min-score 70
 ```
 
 `compare` matches the H2/H3 outlines of the two pages (question headings are left to the FAQ section)
 and reports shared headings, headings only on one page, and the 1-3 word terms (used at least twice)
 that both pages share or only one uses, plus a word/heading/link/image comparison. Add `--json` for
 machine-readable output.
+
+`check` builds the brief in memory from the same competitor sources as `build` (`-u`, `--urls-file`
+or `--offline`) and scores a draft out of 100, with a letter grade and a list of next steps:
+
+| Component | Points | Full marks when |
+|---|---|---|
+| Outline | 30 | every merged-outline section has a similar H2/H3 in the draft |
+| Terms | 25 | the top `--top-terms` (default 20) brief terms appear in the draft (plural-insensitive) |
+| Questions | 15 | every competitor question has a matching heading |
+| Word count | 15 | the draft is inside the competitor range (partial credit when short or far over) |
+| Keyword placement | 15 | the keyword is in the title, the H1, the first 100 words and an H2/H3 |
+
+Components that do not apply (for example, no competitor asks a question) are left out and the score is
+rescaled. Markdown drafts (`.md`, `.markdown`, `.txt`) may start with YAML front matter; its `title`
+is used, otherwise the first `#` heading. Use `--json` for the full result and `--min-score N` to exit
+with status 1 below a threshold, which turns the check into a CI gate for content pull requests.
 
 Options worth knowing:
 
@@ -73,6 +92,7 @@ Options worth knowing:
 | `-f/--format` | Any of `md`, `html`, `json` |
 | `--front-matter` | Start the Markdown file with a YAML front matter block (title, keyword, date, lang, `draft: true`, word count range, schema suggestions) for Hugo, Jekyll, Astro or CMS importers |
 | `-o/--out` | Output directory (default `brief-output`) |
+| `--min-score` | `check` only: exit with status 1 when the draft scores below this value |
 
 URLs blocked by `robots.txt`, non-HTML responses, errors and oversized pages are skipped and listed
 in the brief. If `robots.txt` cannot be read because of a server error, the host is skipped to be safe.

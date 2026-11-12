@@ -13,6 +13,7 @@ from rich.table import Table
 
 from . import __version__
 from .brief import build_brief, render_front_matter, render_html, render_markdown
+from .check import WEIGHTS, check_draft, parse_markdown
 from .compare import compare_pages
 from .extract import parse_html
 from .fetch import DEFAULT_UA, Fetcher, load_offline
@@ -79,6 +80,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--delay", type=float, default=2.0, help="seconds between requests (per host)")
     c.add_argument("--timeout", type=float, default=15.0, help="request timeout in seconds")
     c.add_argument("--user-agent", default=DEFAULT_UA, help="custom User-Agent string")
+
+    d = sub.add_parser("check", help="score a draft (Markdown or HTML) against the brief")
+    d.add_argument("draft", metavar="DRAFT", help="draft file (.md, .markdown, .txt, .html) or URL")
+    common(d)
+    d.add_argument("--top-terms", type=int, default=20, help="brief terms to check (default 20)")
+    d.add_argument(
+        "--min-score",
+        type=float,
+        default=None,
+        help="exit with status 1 when the score is below this value (for CI)",
+    )
+    d.add_argument("--json", action="store_true", help="print JSON instead of a report")
     return p
 
 
@@ -245,6 +258,92 @@ def cmd_compare(args, console: Console) -> int:
     return 0
 
 
+MARKDOWN_SUFFIXES = (".md", ".markdown", ".txt")
+
+
+def load_draft(source: str, args, console: Console):
+    """Read a Markdown/text draft locally, otherwise defer to the HTML/URL loader."""
+    path = Path(source)
+    if "://" not in source and path.suffix.lower() in MARKDOWN_SUFFIXES:
+        if not path.is_file():
+            raise FileNotFoundError(f"file not found: {source}")
+        return parse_markdown(path.read_text(encoding="utf-8", errors="replace"), path.name)
+    return _load_one(source, args, console)
+
+
+def _mark(ok: bool) -> str:
+    return "[green]yes[/green]" if ok else "[red]no[/red]"
+
+
+def cmd_check(args, console: Console) -> int:
+    if args.top_terms < 1:
+        console.print("[red]error:[/red] --top-terms must be at least 1")
+        return 2
+    draft = load_draft(args.draft, args, console)
+    if draft is None:
+        console.print("[red]The draft could not be read.[/red]")
+        return 2
+    if not draft.word_count:
+        console.print("[red]error:[/red] the draft has no readable text")
+        return 2
+    pages, skipped = collect_pages(args, console)
+    if not pages:
+        console.print("[red]No competitor pages could be analysed.[/red]")
+        return 2
+    result = check_draft(draft, build_brief(args.keyword, pages, skipped), top_terms=args.top_terms)
+    failed = args.min_score is not None and result["score"] < args.min_score
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    console.print(
+        f"Draft score for '{result['keyword']}': [bold]{result['score']:.0f}/100[/bold] "
+        f"(grade {result['grade']}, {result['competitors']} competitors)",
+        highlight=False,
+    )
+    table = Table(title="Score breakdown")
+    for col in ("Component", "Points", "Detail"):
+        table.add_column(col, overflow="fold")
+    outline, questions, terms = result["outline"], result["questions"], result["terms"]
+    wc, kw = result["word_count"], result["keyword_placement"]
+    details = {
+        "outline": f"{len(outline['covered'])} of "
+        f"{len(outline['covered']) + len(outline['missing'])} sections",
+        "terms": f"{len(terms['used'])} of {len(terms['used']) + len(terms['missing'])} terms",
+        "questions": f"{len(questions['answered'])} of "
+        f"{len(questions['answered']) + len(questions['unanswered'])} questions",
+        "word_count": f"{wc['words']} words"
+        + (f" (range {wc['low']}-{wc['high']}, {wc['status']})" if wc["low"] else ""),
+        "keyword_placement": ", ".join(
+            f"{name} {'yes' if ok else 'no'}" for name, ok in kw["places"].items()
+        ),
+    }
+    for name, weight in WEIGHTS.items():
+        points = result["components"][name]
+        shown = "n/a" if points is None else f"{points:g}/{weight}"
+        table.add_row(name.replace("_", " "), shown, details[name])
+    console.print(table)
+    for item in outline["covered"]:
+        console.print(f"  = {item['section']}  [dim]~ {item['draft']}[/dim]", highlight=False)
+    for item in outline["missing"]:
+        console.print(f"  [red]missing[/red] {item['section']} ({item['pages']} pages)",
+                      highlight=False)  # fmt: skip
+    console.print(
+        "Keyword in: "
+        + ", ".join(f"{name} {_mark(ok)}" for name, ok in kw["places"].items()),
+        highlight=False,
+    )
+    if result["suggestions"]:
+        console.print("\nNext steps:")
+        for line in result["suggestions"]:
+            console.print(f"  - {line}", highlight=False)
+    if failed:
+        console.print(
+            f"[red]Score {result['score']:g} is below --min-score {args.min_score:g}[/red]"
+        )
+        return 1
+    return 0
+
+
 def main(argv: list | None = None) -> int:
     args = build_parser().parse_args(argv)
     console = Console(file=sys.stderr if getattr(args, "json", False) else None)
@@ -253,6 +352,8 @@ def main(argv: list | None = None) -> int:
             return cmd_build(args, console)
         if args.command == "compare":
             return cmd_compare(args, console)
+        if args.command == "check":
+            return cmd_check(args, console)
         return cmd_analyze(args, console)
     except FileNotFoundError as exc:
         console.print(f"[red]error:[/red] {exc}")
