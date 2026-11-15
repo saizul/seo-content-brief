@@ -57,6 +57,9 @@ seo-brief compare my-draft.html https://example.com/guide --top 20
 
 # Score your draft (Markdown, text or HTML) against the brief for the same competitors
 seo-brief check my-draft.md -k "email marketing" --offline examples/offline-pages --min-score 70
+
+# On-page technical audit of your own pages (no competitors needed)
+seo-brief audit public/index.html https://example.com/guide -k "email marketing" --fail-on error
 ```
 
 `compare` matches the H2/H3 outlines of the two pages (question headings are left to the FAQ section)
@@ -80,6 +83,21 @@ rescaled. Markdown drafts (`.md`, `.markdown`, `.txt`) may start with YAML front
 is used, otherwise the first `#` heading. Use `--json` for the full result and `--min-score N` to exit
 with status 1 below a threshold, which turns the check into a CI gate for content pull requests.
 
+`audit` checks the technical on-page basics of each page you pass (URLs are fetched with the same
+polite fetcher, files are read locally) and scores it out of 100, taking 15 points per error,
+5 per warning and 1 per notice:
+
+| Severity | Findings |
+|---|---|
+| error | no `<title>`, no H1, `noindex`/`none` in `meta robots` or `googlebot`, two different canonical URLs |
+| warning | title outside 30-60 characters, meta description missing or outside 70-160, several or empty H1s, relative canonical, no `lang`, no viewport, invalid JSON-LD, `<img>` without an `alt` attribute, main content under 300 words |
+| notice | skipped heading level (H2 to H4), no canonical, canonical on another host, missing `og:title`/`og:description`/`og:image`, keyword (`-k`) not in title, H1, description or URL slug |
+
+`alt=""` counts as a deliberate decorative image and is not flagged. In the URL slug, stopwords of the
+keyword may be left out. Use `--json` for machine-readable output and `--fail-on error` (or `warning`,
+`notice`) to exit with status 1, so a site build can block pages that would be deindexed or have no H1.
+Character limits are guidelines: search engines truncate by pixel width, and Bangla text renders wider.
+
 Options worth knowing:
 
 | Option | Meaning |
@@ -93,6 +111,7 @@ Options worth knowing:
 | `--front-matter` | Start the Markdown file with a YAML front matter block (title, keyword, date, lang, `draft: true`, word count range, schema suggestions) for Hugo, Jekyll, Astro or CMS importers |
 | `-o/--out` | Output directory (default `brief-output`) |
 | `--min-score` | `check` only: exit with status 1 when the draft scores below this value |
+| `--fail-on` | `audit` only: exit with status 1 when any page has a finding of this severity or worse |
 
 URLs blocked by `robots.txt`, non-HTML responses, errors and oversized pages are skipped and listed
 in the brief. If `robots.txt` cannot be read because of a server error, the host is skipped to be safe.

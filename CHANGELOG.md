@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- `seo-brief audit PAGE...`: on-page technical audit of one or more pages (URL or saved HTML) with no competitors needed. Reports errors, warnings and notices for title and meta description length, missing/multiple H1, skipped heading levels, `noindex` robots directives, missing/relative/conflicting/cross-host canonicals, `lang`, viewport, Open Graph tags, invalid JSON-LD, images without an `alt` attribute and thin content, plus optional keyword placement (`-k`) in title, H1, description and URL slug. Scores each page out of 100; `--json` output and `--fail-on error|warning|notice` exit code for CI.
 - `seo-brief check DRAFT`: score a Markdown, text or HTML draft (or URL) out of 100 against the brief built from the same competitors, covering outline sections, terms, questions, word count and keyword placement, with next-step suggestions, `--json` output and a `--min-score` exit code for CI.
 - `seo-brief build --front-matter`: prepend a YAML front matter block to the Markdown brief so it can be imported into static site generators and CMSs.
 - `seo-brief compare PAGE_A PAGE_B`: shared and unique headings and terms between two pages (URL or local HTML file), with `--json` output.

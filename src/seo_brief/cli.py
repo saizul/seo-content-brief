@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+from .audit import SEVERITIES, audit_html, fails
 from .brief import build_brief, render_front_matter, render_html, render_markdown
 from .check import WEIGHTS, check_draft, parse_markdown
 from .compare import compare_pages
@@ -92,6 +93,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="exit with status 1 when the score is below this value (for CI)",
     )
     d.add_argument("--json", action="store_true", help="print JSON instead of a report")
+
+    t = sub.add_parser("audit", help="on-page technical audit of one or more pages")
+    t.add_argument("pages", metavar="PAGE", nargs="+", help="URL or saved .html file (repeat)")
+    t.add_argument("-k", "--keyword", default="", help="also check keyword placement")
+    t.add_argument(
+        "--fail-on",
+        choices=SEVERITIES,
+        default=None,
+        help="exit with status 1 when any page has a finding of this severity or worse",
+    )
+    t.add_argument("--json", action="store_true", help="print JSON instead of a report")
+    t.add_argument("--cache-dir", default=".seo-brief-cache", help="disk cache directory")
+    t.add_argument("--no-cache", action="store_true", help="disable the disk cache")
+    t.add_argument("--delay", type=float, default=2.0, help="seconds between requests (per host)")
+    t.add_argument("--timeout", type=float, default=15.0, help="request timeout in seconds")
+    t.add_argument("--user-agent", default=DEFAULT_UA, help="custom User-Agent string")
     return p
 
 
@@ -203,6 +220,63 @@ def _load_one(source: str, fetcher_args, console: Console):
         console.print(f"[yellow]skip[/yellow] {source}: {res.error or 'empty response'}")
         return None
     return parse_html(res.html, source)
+
+
+def _load_html(source: str, fetcher, console: Console):
+    """Return (name, html) for a local file or a politely fetched URL, or None."""
+    path = Path(source)
+    if "://" not in source:
+        if not path.is_file():
+            raise FileNotFoundError(f"file not found: {source}")
+        return path.name, path.read_text(encoding="utf-8", errors="replace")
+    res = fetcher.fetch(source)
+    if not res.ok:
+        console.print(f"[yellow]skip[/yellow] {source}: {res.error or 'empty response'}")
+        return None
+    return source, res.html
+
+
+SEVERITY_STYLE = {"error": "red", "warning": "yellow", "notice": "cyan"}
+
+
+def cmd_audit(args, console: Console) -> int:
+    fetcher = Fetcher(
+        cache_dir=None if args.no_cache else args.cache_dir,
+        delay=args.delay,
+        timeout=args.timeout,
+        user_agent=args.user_agent,
+    )
+    results = []
+    for source in dict.fromkeys(args.pages):
+        loaded = _load_html(source, fetcher, console)
+        if loaded is not None:
+            results.append(audit_html(loaded[1], loaded[0], keyword=args.keyword))
+    if not results:
+        console.print("[red]No pages could be audited.[/red]")
+        return 2
+    failed = any(fails(r, args.fail_on) for r in results)
+    if args.json:
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+        return 1 if failed else 0
+    for r in results:
+        c = r["counts"]
+        console.print(
+            f"\n[bold]{r['url']}[/bold]  score {r['score']}/100  "
+            f"({c['error']} errors, {c['warning']} warnings, {c['notice']} notices)",
+            highlight=False,
+        )
+        if not r["findings"]:
+            console.print("  [green]no issues found[/green]")
+        for f in r["findings"]:
+            style = SEVERITY_STYLE[f["severity"]]
+            console.print(
+                f"  [{style}]{f['severity']:<7}[/{style}] {f['code']}: {f['message']}",
+                highlight=False,
+            )
+    if failed:
+        console.print(f"[red]Audit failed: findings at or above '{args.fail_on}'[/red]")
+        return 1
+    return 0
 
 
 def cmd_compare(args, console: Console) -> int:
@@ -354,6 +428,8 @@ def main(argv: list | None = None) -> int:
             return cmd_compare(args, console)
         if args.command == "check":
             return cmd_check(args, console)
+        if args.command == "audit":
+            return cmd_audit(args, console)
         return cmd_analyze(args, console)
     except FileNotFoundError as exc:
         console.print(f"[red]error:[/red] {exc}")
